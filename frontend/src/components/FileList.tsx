@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState,useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fileService } from "../services/fileService";
 import { FileType } from "../types/file";
 import { DocumentIcon, TrashIcon, ArrowDownTrayIcon } from "@heroicons/react/24/outline";
 import { toast } from 'react-hot-toast';
+import { extractErrorMessage } from '../utils/errorHandler';
 
 const FileList = () => {
     // State variables in camelCase
@@ -54,7 +55,6 @@ const FileList = () => {
                     return Promise.reject(new Error(sizeError));
                 }
             }
-            
             return fileService.getFiles({
                 search: searchQuery,
                 fileType,
@@ -67,6 +67,12 @@ const FileList = () => {
         enabled: !sizeError, // Disable the query if there are size validation errors
     });
 
+    useEffect(() => {
+        if (searchQuery === "" && fileType === "" && minSize === "" && maxSize === "" && uploadDate === "") {
+          refetch();
+        }
+    }, [searchQuery, fileType, minSize, maxSize, uploadDate]);
+
     // Mutations with proper camelCase naming
     const deleteMutation = useMutation({
         mutationFn: fileService.deleteFile,
@@ -76,7 +82,7 @@ const FileList = () => {
             queryClient.invalidateQueries({ queryKey: ['storage-metadata'] });
         },
         onError: (error: any) => {
-            toast.error(error.response?.data?.error || 'Failed to delete file');
+            toast.error(extractErrorMessage(error));
         },
     });
 
@@ -94,16 +100,16 @@ const FileList = () => {
     const handleDelete = async (id: string) => {
         try {
             await deleteMutation.mutateAsync(id);
-        } catch (err) {
-            console.error("Delete error:", err);
+        } catch (error) {
+            toast.error(extractErrorMessage(error));
         }
     };
 
     const handleDownload = async (fileUrl: string, filename: string) => {
         try {
             await downloadMutation.mutateAsync({ fileUrl, filename });
-        } catch (err) {
-            console.error("Download error:", err);
+        } catch (error) {
+            toast.error(extractErrorMessage(error));
         }
     };
 
@@ -126,6 +132,26 @@ const FileList = () => {
         if (validateSizeInputs()) {
             refetch();
         }
+    };
+
+    const handleResetFilters =  () => {
+        setSearchQuery("");
+        setFileType("");
+        setMinSize("");
+        setMaxSize("");
+        setUploadDate("");
+        setSizeError("");
+        setCurrentPage(1);  // Reset to first page
+        // refetch()
+        // queryClient.invalidateQueries({ queryKey: ['files'] });
+        // await fileService.getFiles({
+        //     page: 1,
+        //     search: "",
+        //     fileType: "",
+        //     minSize: undefined,
+        //     maxSize: undefined,
+        //     uploadDate: ""
+        // });
     };
 
     // Loading state
@@ -221,12 +247,20 @@ const FileList = () => {
                         onChange={(e) => setUploadDate(e.target.value)}
                         className="border rounded px-2 py-1"
                     />
-                    <button
-                        onClick={handleApplyFilters}
-                        className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
-                    >
-                        Apply Filters
-                    </button>
+                    <div className="flex space-x-2">
+                        <button
+                            onClick={handleApplyFilters}
+                            className="bg-blue-500 text-white px-3 py-1 rounded text-sm font-semibold hover:bg-blue-600 transition-colors"
+                        >
+                            Apply Filters
+                        </button>
+                        <button
+                            onClick={handleResetFilters}
+                            className="bg-gray-500 text-white px-3 py-1 rounded text-sm font-semibold hover:bg-gray-600 transition-colors"
+                        >
+                            Reset Filters
+                        </button>
+                    </div>
                 </div>
                 {sizeError && (
                     <div className="text-red-500 text-sm">

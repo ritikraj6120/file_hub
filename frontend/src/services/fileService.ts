@@ -72,7 +72,6 @@ export const fileService = {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Download error:', error);
       throw new Error('Failed to download file');
     }
   },

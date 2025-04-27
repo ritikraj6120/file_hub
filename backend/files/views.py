@@ -1,11 +1,9 @@
 import hashlib
-from django.shortcuts import render
+from django.core.exceptions import ValidationError
 from django.utils.dateparse import parse_date
-from django.db.models import Sum, Count
 from django.db import transaction
 from django.core.paginator import Paginator
 from rest_framework import viewsets, status, mixins
-from rest_framework.decorators import action
 from rest_framework.response import Response
 from .models import File, StorageMetadata
 from .serializers import FileSerializer, StorageMetadataSerializer
@@ -28,43 +26,68 @@ class FileViewSet(viewsets.ModelViewSet):
                 {'error': f'File size cannot exceed 10 MB'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
-        print("come till here")
-        with transaction.atomic():
-            file_hash = hashlib.sha256(file_obj.read()).hexdigest()
-            file_obj.seek(0)  # Reset file pointer after reading
-            existing_file = File.objects.filter(hash=file_hash).first()
-            metadata = StorageMetadata.get_instance()
-            if existing_file:
-                # Update reference count and metadata for duplicate file
-                existing_file.reference_count += 1
-                existing_file.save()
-                # Update metadata
+        try:
+            with transaction.atomic():
+                file_hash = hashlib.sha256(file_obj.read()).hexdigest()
+                file_obj.seek(0)  # Reset file pointer after reading
+                existing_file = File.objects.filter(hash=file_hash).first()
+                metadata = StorageMetadata.get_instance()
+                if existing_file:
+                    # Update reference count and metadata for duplicate file
+                    existing_file.reference_count += 1
+                    existing_file.save()
+                    # Update metadata
+                    metadata.total_files_referenced += 1
+                    metadata.duplicates_prevented += 1
+                    metadata.storage_saved_mb += existing_file.size / (1024 * 1024)
+                    metadata.save()
+                    return Response(FileSerializer(existing_file).data, status=status.HTTP_200_OK)
+                # Create new file
+                data = {
+                    'file': file_obj,
+                    'original_filename': file_obj.name,
+                    'file_type': file_obj.content_type,
+                    'size': file_obj.size,
+                    'hash': file_hash,
+                    'reference_count': 1
+                }
+                serializer = self.get_serializer(data=data)
+                try:
+                    serializer.is_valid(raise_exception=True)
+                except ValidationError as e:
+                    return Response(
+                        {'error': e.message_dict}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                except Exception as e:
+                        return Response(
+                            {'error': str(e)}, 
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                try:
+                    self.perform_create(serializer)
+                except ValidationError as e:
+                    return Response(
+                        {'error': e.message_dict}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                # Update metadata for new file
                 metadata.total_files_referenced += 1
-                metadata.duplicates_prevented += 1
-                metadata.storage_saved_mb += existing_file.size / (1024 * 1024)
+                metadata.unique_files_stored += 1
                 metadata.save()
-                return Response(FileSerializer(existing_file).data, status=status.HTTP_200_OK)
-            # Create new file
-            data = {
-                'file': file_obj,
-                'original_filename': file_obj.name,
-                'file_type': file_obj.content_type,
-                'size': file_obj.size,
-                'hash': file_hash,
-                'reference_count': 1
-            }
-        
-            serializer = self.get_serializer(data=data)
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            
-            # Update metadata for new file
-            metadata.total_files_referenced += 1
-            metadata.unique_files_stored += 1
-            metadata.save()
 
-            headers = self.get_success_headers(serializer.data)
-            return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+                headers = self.get_success_headers(serializer.data)
+                return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+        except ValidationError as e:
+            return Response(
+                {'error': e.message_dict}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            return Response(
+                {'error': str(e)}, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
     
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
