@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { fileService } from '../services/fileService';
 import { File as FileType } from '../types/file';
 import { DocumentIcon, TrashIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
@@ -6,11 +6,30 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
 export const FileList: React.FC = () => {
   const queryClient = useQueryClient();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [fileType, setFileType] = useState('');
+  const [minSize, setMinSize] = useState<string>('');  // Changed to string
+  const [maxSize, setMaxSize] = useState<string>('');  // Changed to string
+  const [uploadDate, setUploadDate] = useState('');
+  
 
   // Query for fetching files
-  const { data: files, isLoading, error } = useQuery({
-    queryKey: ['files'],
-    queryFn: fileService.getFiles,
+  // const { data: files, isLoading, error } = useQuery({
+  //   queryKey: ['files'],
+  //   queryFn:()=> fileService.getFiles(),
+  // });
+
+  const { data: files, isLoading, error, refetch } = useQuery({
+    queryKey: ['files'], // Static queryKey
+    queryFn: () =>
+      fileService.getFiles({
+        search: searchQuery,
+        fileType,
+        minSize: minSize ? parseInt(minSize, 10) : undefined,  // Convert to number here
+        maxSize: maxSize ? parseInt(maxSize, 10) : undefined,  // Convert to number here
+        uploadDate
+      }),
+    // enabled: false, // Disable automatic fetching
   });
 
   // Mutation for deleting files
@@ -18,6 +37,7 @@ export const FileList: React.FC = () => {
     mutationFn: fileService.deleteFile,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['files'] });
+      queryClient.invalidateQueries({ queryKey: ['storage-metadata'] });
     },
   });
 
@@ -87,6 +107,69 @@ export const FileList: React.FC = () => {
 
   return (
     <div className="p-6">
+      {/* Search Bar */}
+      <div className="flex space-x-4 mb-4">
+        <input
+          type="text"
+          placeholder="Search files..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="border rounded px-2 py-1"
+        />
+        <select
+          value={fileType}
+          onChange={(e) => setFileType(e.target.value)}
+          className="border rounded px-2 py-1"
+        >
+          <option value="">All Types</option>
+          <option value="image/png">PNG</option>
+          <option value="image/jpeg">JPEG</option>
+          <option value="application/pdf">PDF</option>
+        </select>
+        <div className="flex space-x-4">
+          <input
+            type="number"
+            placeholder="Min Size (KB)"
+            value={minSize}
+            onChange={(e) => setMinSize(e.target.value)}
+            className="border rounded px-2 py-1"
+          />
+          <input
+            type="number"
+            placeholder="Max Size (KB)"
+            value={maxSize}
+            onChange={(e) => setMaxSize(e.target.value)}
+            className="border rounded px-2 py-1"
+          />
+        </div>
+        <input
+          type="date"
+          placeholder="Upload Date"
+          value={uploadDate}
+          onChange={(e) => setUploadDate(e.target.value)}
+          className="border rounded px-2 py-1"
+        />
+        {/* <button
+          onClick={() => {
+            console.log("hi")
+            queryClient.invalidateQueries({ queryKey: ['files'] });
+            fileService.getFiles({ search: searchQuery, file_type: fileType });
+          }}
+          className="bg-blue-500 text-white px-4 py-2 rounded"
+        >
+          Search
+        </button> */}
+        <button
+        onClick={() => {
+          refetch();
+          // queryClient.invalidateQueries({ queryKey: ['files'] });
+        }}
+        className="bg-blue-500 text-white px-4 py-2 rounded"
+      >
+        Apply Filters
+      </button>
+      </div>
+      {/* Uploaded Files Section */}
       <h2 className="text-xl font-semibold text-gray-900 mb-4">Uploaded Files</h2>
       {!files || files.length === 0 ? (
         <div className="text-center py-12">
@@ -99,7 +182,7 @@ export const FileList: React.FC = () => {
       ) : (
         <div className="mt-6 flow-root">
           <ul className="-my-5 divide-y divide-gray-200">
-            {files.map((file) => (
+            {files.map((file: FileType) => (
               <li key={file.id} className="py-4">
                 <div className="flex items-center space-x-4">
                   <div className="flex-shrink-0">

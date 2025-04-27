@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState,useRef } from 'react';
 import { fileService } from '../services/fileService';
 import { CloudArrowUpIcon } from '@heroicons/react/24/outline';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'react-hot-toast';
 
 interface FileUploadProps {
   onUploadSuccess: () => void;
@@ -11,18 +12,35 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const queryClient = useQueryClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const uploadMutation = useMutation({
     mutationFn: fileService.uploadFile,
-    onSuccess: () => {
+    onSuccess: (response, variables) => {
+      if (response.status === 200) {
+        toast.success('File already exists!');
+      } else if (response.status === 201) {
+        toast.success('File uploaded successfully!');
+      }
       // Invalidate and refetch files query
       queryClient.invalidateQueries({ queryKey: ['files'] });
+      queryClient.invalidateQueries({ queryKey: ['storage-metadata'] });
       setSelectedFile(null);
+      // Reset the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       onUploadSuccess();
     },
-    onError: (error) => {
-      setError('Failed to upload file. Please try again.');
-      console.error('Upload error:', error);
+    onError: (error:any) => {
+      let errorMessage = 'Failed to upload file. Please try again.';
+    
+      if (error.response && error.response.status !== 500) {
+        // Use the server's error message if available
+        errorMessage = error.response.data.error || errorMessage;
+      }
+      setError(errorMessage);
+      toast.error(errorMessage);
     },
   });
 
@@ -69,6 +87,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
                   className="sr-only"
                   onChange={handleFileSelect}
                   disabled={uploadMutation.isPending}
+                  ref={fileInputRef}
                 />
               </label>
               <p className="pl-1">or drag and drop</p>
