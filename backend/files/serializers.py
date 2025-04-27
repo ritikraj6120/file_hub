@@ -15,6 +15,5 @@ class StorageMetadataSerializer(serializers.ModelSerializer):
             'total_files_referenced',
             'unique_files_stored',
             'duplicates_prevented',
-            'storage_saved_bytes',
             'storage_saved_mb',
         ]

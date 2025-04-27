@@ -42,7 +42,7 @@ class StorageMetadata(models.Model):
     total_files_referenced = models.IntegerField(default=0)
     unique_files_stored = models.IntegerField(default=0)
     duplicates_prevented = models.IntegerField(default=0)
-    storage_saved_bytes = models.BigIntegerField(default=0)
+    # storage_saved_bytes = models.BigIntegerField(default=0)
     storage_saved_mb = models.FloatField(default=0)
 
     class Meta:

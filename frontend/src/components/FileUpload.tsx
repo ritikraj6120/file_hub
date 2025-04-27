@@ -1,148 +1,120 @@
-import React, { useState,useRef } from 'react';
-import { fileService } from '../services/fileService';
-import { CloudArrowUpIcon } from '@heroicons/react/24/outline';
+import { useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { fileService } from '../services/fileService';
 import { toast } from 'react-hot-toast';
 
-interface FileUploadProps {
-  onUploadSuccess: () => void;
-}
-
-export const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const queryClient = useQueryClient();
+const FileUpload = ({ onUploadSuccess }: { onUploadSuccess: () => void }) => {
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
   const uploadMutation = useMutation({
     mutationFn: fileService.uploadFile,
-    onSuccess: (response, variables) => {
-      if (response.status === 200) {
-        toast.success('File already exists!');
-      } else if (response.status === 201) {
-        toast.success('File uploaded successfully!');
-      }
-      // Invalidate and refetch files query
+    onSuccess: () => {
+      toast.success('File uploaded successfully');
       queryClient.invalidateQueries({ queryKey: ['files'] });
       queryClient.invalidateQueries({ queryKey: ['storage-metadata'] });
-      setSelectedFile(null);
       // Reset the file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-      onUploadSuccess();
     },
-    onError: (error:any) => {
-      let errorMessage = 'Failed to upload file. Please try again.';
-    
-      if (error.response && error.response.status !== 500) {
-        // Use the server's error message if available
-        errorMessage = error.response.data.error || errorMessage;
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to upload file');
+      // Also reset on error
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
       }
-      setError(errorMessage);
-      toast.error(errorMessage);
     },
   });
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files[0]) {
-      setSelectedFile(event.target.files[0]);
-      setError(null);
+  const handleDragOver = (event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (event: React.DragEvent) => {
+    event.preventDefault();
+    setIsDragging(false);
+    
+    const files = Array.from(event.dataTransfer.files);
+    await handleFileUpload(files);
+  };
+
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    await handleFileUpload(files);
+  };
+
+  const handleFileUpload = async (files: File[]) => {
+    for (const file of files) {
+      try {
+        await uploadMutation.mutateAsync(file);
+      } catch (error) {
+        console.error('Upload error:', error);
+      }
     }
   };
 
-  const handleUpload = async () => {
-    if (!selectedFile) {
-      setError('Please select a file');
-      return;
-    }
-
-    try {
-      setError(null);
-      await uploadMutation.mutateAsync(selectedFile);
-    } catch (err) {
-      // Error handling is done in onError callback
-    }
+  const handleButtonClick = () => {
+    fileInputRef.current?.click();
   };
 
   return (
     <div className="p-6">
-      <div className="flex items-center mb-4">
-        <CloudArrowUpIcon className="h-6 w-6 text-primary-600 mr-2" />
-        <h2 className="text-xl font-semibold text-gray-900">Upload File</h2>
-      </div>
-      <div className="mt-4 space-y-4">
-        <div className="flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
-          <div className="space-y-1 text-center">
-            <div className="flex text-sm text-gray-600">
-              <label
-                htmlFor="file-upload"
-                className="relative cursor-pointer bg-white rounded-md font-medium text-primary-600 hover:text-primary-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-primary-500"
-              >
-                <span>Upload a file</span>
-                <input
-                  id="file-upload"
-                  name="file-upload"
-                  type="file"
-                  className="sr-only"
-                  onChange={handleFileSelect}
-                  disabled={uploadMutation.isPending}
-                  ref={fileInputRef}
-                />
-              </label>
-              <p className="pl-1">or drag and drop</p>
-            </div>
-            <p className="text-xs text-gray-500">Any file up to 10MB</p>
+      <div
+        className={`border-2 border-dashed rounded-lg p-8 text-center ${
+          isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300'
+        }`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          className="hidden"
+          multiple
+        />
+        <div className="space-y-4">
+          <div className="flex justify-center">
+            <svg
+              className="h-12 w-12 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+              />
+            </svg>
           </div>
+          <div className="text-gray-600">
+            <button
+              type="button"
+              onClick={handleButtonClick}
+              className="text-blue-600 hover:text-blue-500 focus:outline-none focus:underline"
+            >
+              Click to upload
+            </button>{' '}
+            or drag and drop files here
+          </div>
+          <p className="text-xs text-gray-500">
+            Support for a single or bulk upload.
+          </p>
         </div>
-        {selectedFile && (
-          <div className="text-sm text-gray-600">
-            Selected: {selectedFile.name}
-          </div>
-        )}
-        {error && (
-          <div className="text-sm text-red-600 bg-red-50 p-2 rounded">
-            {error}
-          </div>
-        )}
-        <button
-          onClick={handleUpload}
-          disabled={!selectedFile || uploadMutation.isPending}
-          className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white ${
-            !selectedFile || uploadMutation.isPending
-              ? 'bg-gray-300 cursor-not-allowed'
-              : 'bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500'
-          }`}
-        >
-          {uploadMutation.isPending ? (
-            <>
-              <svg
-                className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <circle
-                  className="opacity-25"
-                  cx="12"
-                  cy="12"
-                  r="10"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                ></circle>
-                <path
-                  className="opacity-75"
-                  fill="currentColor"
-                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
-              </svg>
-              Uploading...
-            </>
-          ) : (
-            'Upload'
-          )}
-        </button>
       </div>
     </div>
   );
-}; 
+};
+
+export default FileUpload;

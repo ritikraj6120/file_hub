@@ -1,67 +1,116 @@
-import { useQuery } from '@tanstack/react-query';
-import { fileService } from '../services/fileService';
-import { StorageMetadata } from '../types/file';
+import { useQuery } from "@tanstack/react-query";
+import { fileService } from "../services/fileService";
+import {
+    DocumentDuplicateIcon,
+    DocumentIcon,
+    ArrowTrendingUpIcon,
+} from "@heroicons/react/24/outline";
 
-export const StorageStats = () => {
-  const { data: stats, isLoading } = useQuery<StorageMetadata>({
-    queryKey: ['storage-metadata'],
-    queryFn: () => fileService.getStorageStats(),
-  });
+const StorageStats = () => {
+    const {
+        data: statsData,
+        isLoading,
+        error,
+    } = useQuery({
+        queryKey: ["storage-metadata"],
+        queryFn: fileService.getStorageStats,
+    });
 
-  if (isLoading) {
+    const statsItems = [
+        {
+            name: "Total Files Uploaded",
+            value: statsData?.total_files_referenced || 0,
+            icon: DocumentIcon,
+        },
+        {
+            name: "Unique Files",
+            value: statsData?.unique_files_stored || 0,
+            icon: DocumentDuplicateIcon,
+        },
+        {
+            name: "Storage Saved",
+            value: `${(statsData?.storage_saved_mb || 0).toFixed(3)} MB`,
+            icon: ArrowTrendingUpIcon,
+        },
+        {
+            name: "Duplicates Prevented",
+            value: statsData?.duplicates_prevented || 0,
+            icon: DocumentDuplicateIcon,
+        },
+    ];
+
+    if (isLoading) {
+        return (
+            <div className="p-4">
+                <div className="animate-pulse space-y-2">
+                    <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        {[1, 2, 3, 4].map((i) => (
+                            <div
+                                key={i}
+                                className="h-20 bg-gray-200 rounded"
+                            ></div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="p-4">
+                <div className="bg-red-50 border-l-4 border-red-400 p-3">
+                    <div className="flex">
+                        <div className="ml-3">
+                            <p className="text-sm text-red-700">
+                                Failed to load storage statistics
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     return (
-      <div className="animate-pulse bg-white shadow rounded-lg p-6">
-        <div className="h-4 bg-gray-200 rounded w-1/4 mb-4"></div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="h-20 bg-gray-100 rounded"></div>
-          ))}
+        <div className="p-4">
+            <h3 className="text-lg font-medium leading-6 text-gray-900 mb-2">
+                Storage Statistics
+            </h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {statsItems.map((item) => (
+                    <div
+                        key={item.name}
+                        className="bg-white overflow-hidden shadow rounded-lg"
+                    >
+                        <div className="p-4">
+                            <div className="flex items-center">
+                                <div className="flex-shrink-0">
+                                    <item.icon
+                                        className="h-6 w-6 text-gray-400"
+                                        aria-hidden="true"
+                                    />
+                                </div>
+                                <div className="ml-4 w-0 flex-1">
+                                    <dl>
+                                        <dt className="text-sm font-medium text-gray-500 truncate">
+                                            {item.name}
+                                        </dt>
+                                        <dd className="flex items-baseline">
+                                            <div className="text-2xl font-semibold text-gray-900">
+                                                {item.value}
+                                            </div>
+                                        </dd>
+                                    </dl>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
-      </div>
     );
-  }
-
-  if (!stats) return null;
-
-  return (
-    <div className="bg-white shadow rounded-lg p-6">
-      <h2 className="text-xl font-semibold text-gray-900 mb-6">Storage Statistics</h2>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 overflow-x-auto">
-        <StatCard
-          title="Total Files Referenced"
-          value={stats.total_files_referenced}
-          description="Total number of file references"
-        />
-        <StatCard
-          title="Unique Files"
-          value={stats.unique_files_stored}
-          description="Number of unique files stored"
-        />
-        <StatCard
-          title="Duplicates Prevented"
-          value={stats.duplicates_prevented}
-          description="Number of duplicate uploads prevented"
-        />
-        <StatCard
-          title="Storage Saved"
-          value={`${stats.storage_saved_mb.toFixed(2)} MB`}
-          description="Total storage space saved"
-        />
-      </div>
-    </div>
-  );
 };
 
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  description: string;
-}
-
-const StatCard = ({ title, value, description }: StatCardProps) => (
-  <div className="bg-gray-50 rounded-lg p-4">
-    <h3 className="text-sm font-medium text-gray-500">{title}</h3>
-    <p className="mt-2 text-3xl font-semibold text-gray-900">{value}</p>
-    <p className="mt-1 text-sm text-gray-500">{description}</p>
-  </div>
-);
+export default StorageStats;

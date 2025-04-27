@@ -3,6 +3,7 @@ from django.shortcuts import render
 from django.utils.dateparse import parse_date
 from django.db.models import Sum, Count
 from django.db import transaction
+from django.core.paginator import Paginator
 from rest_framework import viewsets, status, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -27,6 +28,7 @@ class FileViewSet(viewsets.ModelViewSet):
                 {'error': f'File size cannot exceed 10 MB'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
+        print("come till here")
         with transaction.atomic():
             file_hash = hashlib.sha256(file_obj.read()).hexdigest()
             file_obj.seek(0)  # Reset file pointer after reading
@@ -39,8 +41,7 @@ class FileViewSet(viewsets.ModelViewSet):
                 # Update metadata
                 metadata.total_files_referenced += 1
                 metadata.duplicates_prevented += 1
-                metadata.storage_saved_bytes += existing_file.size
-                metadata.storage_saved_mb = round(metadata.storage_saved_bytes / (1024 * 1024), 2)
+                metadata.storage_saved_mb += existing_file.size / (1024 * 1024)
                 metadata.save()
                 return Response(FileSerializer(existing_file).data, status=status.HTTP_200_OK)
             # Create new file
@@ -85,7 +86,7 @@ class FileViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(uploaded_at__date=parse_date(upload_date))
         
         # Add pagination
-        page_size = int(request.query_params.get('page_size', 20))
+        page_size = int(request.query_params.get('page_size', 5))
         page = int(request.query_params.get('page', 1))
         
         paginator = Paginator(queryset, page_size)
@@ -114,53 +115,16 @@ class FileViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             metadata = StorageMetadata.get_instance()
             
-            # Update metadata
-            metadata.total_files_referenced -= 1
+            # Delete the physical file first
+            instance.file.delete(save=False)  # Delete from media storage
             
-            if instance.reference_count > 1:
-                # Decrease reference count
-                instance.reference_count -= 1
-                instance.save()
-                # Don't decrease storage savings as it represents historical savings
-            else:
-                # If this is the last reference, delete the file
-                instance.file.delete(save=False)  # Delete from media storage
-                instance.delete()
-                metadata.unique_files_stored -= 1
-            
+            metadata.unique_files_stored -= 1  # Decrease unique files since we're deleting the actual file
             metadata.save()
             
+            # Delete the database record
+            instance.delete()
+            
             return Response(status=status.HTTP_204_NO_CONTENT)
-    
-    @action(detail=False, methods=['GET'])
-    def storage_stats(self, request):
-        """Calculate storage savings from deduplication"""
-        # Get all files with their size and reference count
-        files = File.objects.all()
-        
-        # Calculate totals
-        total_refs = 0
-        unique_files = len(files)
-        space_saved = 0
-        
-        # Calculate space saved for each file
-        for file in files:
-            total_refs += file.reference_count
-            # For each file, space saved = (reference_count - 1) * file_size
-            if file.reference_count > 1:
-                space_saved += (file.reference_count - 1) * file.size
-        
-        # Calculate duplicates prevented
-        duplicates = total_refs - unique_files
-        
-        return Response({
-            'total_files_referenced': total_refs,
-            'unique_files_stored': unique_files,
-            'duplicates_prevented': duplicates,
-            'storage_saved_bytes': space_saved,
-            'storage_saved_mb': round(space_saved / (1024 * 1024), 2),
-            'deduplication_ratio': round(total_refs / unique_files if unique_files > 0 else 1, 2)
-        })
     
 class StorageMetadataViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """

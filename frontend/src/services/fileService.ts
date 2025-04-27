@@ -1,10 +1,26 @@
 import axios from 'axios';
-import { File as FileType, StorageMetadata } from '../types/file';
+import { FileType, StorageMetadata } from '../types/file';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
-export const fileService = {
+interface GetFilesParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  fileType?: string;
+  minSize?: number;
+  maxSize?: number;
+  uploadDate?: string;
+}
 
+interface PaginatedResponse<T> {
+  results: T[];
+  total: number;
+  pages: number;
+  current_page: number;
+}
+
+export const fileService = {
   async uploadFile(file: File): Promise<{data: FileType; status: number}> {
     const formData = new FormData();
     formData.append('file', file);
@@ -20,23 +36,18 @@ export const fileService = {
     };
   },
 
-  async getFiles(params?: {
-    search?: string;
-    fileType?: string;
-    minSize?: number;
-    maxSize?: number;
-    uploadDate?: string;
-  }): Promise<FileType[]> {
-    // Construct the params object dynamically, excluding default values
-    const filteredParams: Record<string, string | number> = {};
-  
-    if (params?.search) filteredParams.search = params.search;
-    if (params?.fileType) filteredParams.file_type = params.fileType; 
-    if (params?.minSize) filteredParams.min_size = 1024*params.minSize; 
-    if (params?.maxSize) filteredParams.max_size = 1024*params.maxSize; 
-    if (params?.uploadDate) filteredParams.upload_date = params.uploadDate;   
-  
-    const response = await axios.get(`${API_URL}/files/`, { params: filteredParams });
+  async getFiles(params: GetFilesParams = {}): Promise<PaginatedResponse<FileType>> {
+    const queryParams = new URLSearchParams();
+    
+    if (params.page) queryParams.append('page', params.page.toString());
+    if (params.pageSize) queryParams.append('page_size', params.pageSize.toString());
+    if (params.search) queryParams.append('search', params.search);
+    if (params.fileType) queryParams.append('file_type', params.fileType);
+    if (params.minSize) queryParams.append('min_size', params.minSize.toString());
+    if (params.maxSize) queryParams.append('max_size', params.maxSize.toString());
+    if (params.uploadDate) queryParams.append('upload_date', params.uploadDate);
+
+    const response = await axios.get(`${API_URL}/files/?${queryParams.toString()}`);
     return response.data;
   },
 
@@ -69,4 +80,4 @@ export const fileService = {
     const response = await axios.get(`${API_URL}/storage-metadata/1/`);
     return response.data;
   },
-}; 
+};
